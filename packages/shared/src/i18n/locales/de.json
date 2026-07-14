@@ -1252,6 +1252,7 @@
   "sidebar.apis": "APIs",
   "sidebar.archived": "Archiviert",
   "sidebar.automations": "Automatisierungen",
+  "sidebar.childSessions": "Subagent-Sitzungen ({{count}})",
   "sidebar.eventBased": "Ereignisbasiert",
   "sidebar.filterChats": "Chats filtern",
   "sidebar.flagged": "Markiert",
