@@ -1252,6 +1252,7 @@
   "sidebar.apis": "API",
   "sidebar.archived": "已归档",
   "sidebar.automations": "自动化",
+  "sidebar.childSessions": "子代理会话（{{count}}）",
   "sidebar.eventBased": "事件触发",
   "sidebar.filterChats": "筛选聊天",
   "sidebar.flagged": "已标记",

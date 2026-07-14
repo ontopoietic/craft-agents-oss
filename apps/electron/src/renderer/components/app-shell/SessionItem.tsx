@@ -1,6 +1,7 @@
 import { formatDistanceToNowStrict } from "date-fns"
 import type { Locale } from "date-fns"
-import { Flag, ShieldAlert } from "lucide-react"
+import { ChevronRight, Flag, ShieldAlert } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { useActionLabel } from "@/actions"
 import { cn } from "@/lib/utils"
 import { rendererPerf } from "@/lib/perf"
@@ -44,6 +45,19 @@ export interface SessionItemProps {
   onSelect: () => void
   onToggleSelect?: () => void
   onRangeSelect?: () => void
+  // ORCHA §bg-child-sessions (p9): nested child-session rendering.
+  /** Nesting depth (0/undefined = top-level row, 1+ = indented child row) */
+  depth?: number
+  /** Row has nested child sessions — renders the chevron + count chip */
+  hasChildren?: boolean
+  /** Number of nested child sessions */
+  childCount?: number
+  /** Whether the nested child rows are currently expanded */
+  isChildrenExpanded?: boolean
+  /** Toggle expansion. When undefined (e.g. search mode), the chevron is a static indicator. */
+  onToggleChildren?: () => void
+  /** Any nested child session is currently processing — shown on the collapsed chip */
+  hasWorkingChild?: boolean
 }
 
 export function SessionItem({
@@ -55,7 +69,14 @@ export function SessionItem({
   onSelect,
   onToggleSelect,
   onRangeSelect,
+  depth,
+  hasChildren,
+  childCount,
+  isChildrenExpanded,
+  onToggleChildren,
+  hasWorkingChild,
 }: SessionItemProps) {
+  const { t } = useTranslation()
   const ctx = useSessionListContext()
   const { workspaces, isCompactMode } = useAppShellContext()
   const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
@@ -115,10 +136,34 @@ export function SessionItem({
     onSelect()
   }
 
+  // ORCHA §bg-child-sessions (p9): chevron + child-count chip rendered inline
+  // after the title. Click toggles expansion (stopPropagation so the row isn't
+  // selected). Without a toggle handler (search mode) it's a static indicator.
+  const childToggleChip = hasChildren ? (
+    <span
+      role="button"
+      tabIndex={-1}
+      aria-expanded={isChildrenExpanded}
+      title={t('sidebar.childSessions', { count: childCount ?? 0 })}
+      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+      onClick={(e) => { e.stopPropagation(); onToggleChildren?.() }}
+      className={cn(
+        "inline-flex items-center gap-px pl-0.5 pr-1 py-0.5 rounded-[6px] text-[10px] font-medium tabular-nums leading-tight whitespace-nowrap",
+        "bg-foreground/5 text-foreground/60",
+        onToggleChildren && "hover:bg-foreground/10 cursor-pointer",
+      )}
+    >
+      <ChevronRight className={cn("h-3 w-3 transition-transform duration-150", isChildrenExpanded && "rotate-90")} />
+      {childCount}
+      {!isChildrenExpanded && hasWorkingChild && <Spinner className="text-[8px] ml-1" />}
+    </span>
+  ) : null
+
   return (
     <SessionProjectColorWrapper color={projectColor} treatment={projectColorTreatment}>
     <EntityRow
-      className="session-item"
+      // ORCHA §bg-child-sessions (p9): indent nested child rows
+      className={cn("session-item", depth === 1 && "pl-5", (depth ?? 0) >= 2 && "pl-10")}
       dataAttributes={{ 'data-session-id': item.id }}
       showSeparator={!isFirstInGroup}
       separatorClassName="pl-[38px] pr-4"
@@ -213,8 +258,9 @@ export function SessionItem({
       titleClassName={cn("text-[13px]", item.isAsyncOperationOngoing && "animate-shimmer-text")}
       subtitle={previewText}
       titleSuffix={
-        (projectName || hasMessagingBinding) ? (
+        (childToggleChip || projectName || hasMessagingBinding) ? (
           <div className="flex items-center gap-1">
+            {childToggleChip}
             {projectName && (
               <span
                 className="text-[11px] text-foreground/40 whitespace-nowrap truncate max-w-[120px] opacity-0 group-hover:opacity-100 transition-opacity duration-150"

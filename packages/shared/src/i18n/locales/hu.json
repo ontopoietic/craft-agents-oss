@@ -1252,6 +1252,7 @@
   "sidebar.apis": "API-k",
   "sidebar.archived": "Archivált",
   "sidebar.automations": "Automatizációk",
+  "sidebar.childSessions": "Alügynök-munkamenetek ({{count}})",
   "sidebar.eventBased": "Esemény alapú",
   "sidebar.filterChats": "Chatok szűrése",
   "sidebar.flagged": "Megjelölt",

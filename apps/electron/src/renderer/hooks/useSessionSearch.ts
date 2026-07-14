@@ -53,6 +53,11 @@ export interface UseSessionSearchOptions {
   labelFilterMap?: Map<string, FilterMode>
   /** Workspace label tree — label filters match descendants through it (shared matchesLabelFilter). */
   labelConfigs?: LabelConfig[]
+  /** ORCHA §bg-child-sessions (p9): ids of child sessions that render nested under
+   *  their parent row. Excluded from the non-search pipeline (grouping, pagination,
+   *  collapse counts) — the SessionList inserts them beneath their parent instead.
+   *  In search mode they stay in the pipeline so content search can surface them. */
+  nestedChildIds?: Set<string>
   /** Collapsed group keys — collapsed items are excluded from pagination and flatItems */
   collapsedGroups?: Set<string>
   /** Grouping mode — needed to compute group keys for collapse-aware pagination */
@@ -299,6 +304,7 @@ export function useSessionSearch({
   statusFilter,
   labelFilterMap,
   labelConfigs,
+  nestedChildIds,
   collapsedGroups,
   groupingMode,
   scrollViewportRef,
@@ -405,7 +411,10 @@ export function useSessionSearch({
   // Filter items by search query or current filter
   const searchFilteredItems = useMemo(() => {
     if (!isSearchMode) {
+      // ORCHA §bg-child-sessions (p9): nested children are rendered under their
+      // parent row by SessionList — keep them out of grouping/pagination here.
       return sortedItems.filter(item =>
+        !(nestedChildIds?.has(item.id)) &&
         sessionMatchesCurrentFilter(item, currentFilter, { evaluateViews, statusFilter, labelFilterMap, labelConfigs })
       )
     }
@@ -424,7 +433,7 @@ export function useSessionSearch({
         const countB = contentSearchResults.get(b.id)?.matchCount || 0
         return countB - countA
       })
-  }, [sortedItems, isSearchMode, searchQuery, contentSearchResults, currentFilter, evaluateViews, statusFilter, labelFilterMap, labelConfigs])
+  }, [sortedItems, isSearchMode, searchQuery, contentSearchResults, currentFilter, evaluateViews, statusFilter, labelFilterMap, labelConfigs, nestedChildIds])
 
   // Split search results: matching current filter vs others
   const { matchingFilterItems, otherResultItems, exceededSearchLimit } = useMemo(() => {
