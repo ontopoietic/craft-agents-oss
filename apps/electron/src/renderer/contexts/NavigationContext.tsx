@@ -539,9 +539,18 @@ export function NavigationProvider({
   const filterSessionsByFilter = useCallback(
     (filter: SessionFilter): SessionMeta[] => {
       // First filter out hidden sessions - they should never appear in any view
-      const visibleSessions = sessionMetas.filter(
-        s => !s.hidden && (!workspaceId || s.workspaceId === workspaceId)
+      // ORCHA §bg-child-sessions (p9): nested child sessions (parent present in
+      // the same workspace scope) are also excluded — they render nested in the
+      // list but must never be auto-selected (e.g. when the selection advances
+      // after deleting the active session), mirroring the hidden treatment.
+      const inWorkspace = sessionMetas.filter(
+        s => !workspaceId || s.workspaceId === workspaceId
       )
+      const inWorkspaceIds = new Set(inWorkspace.map(s => s.id))
+      const visibleSessions = inWorkspace.filter(s => {
+        if (s.parentSessionId && s.parentSessionId !== s.id && inWorkspaceIds.has(s.parentSessionId)) return false
+        return !s.hidden
+      })
 
       return visibleSessions.filter((session) => {
         switch (filter.kind) {

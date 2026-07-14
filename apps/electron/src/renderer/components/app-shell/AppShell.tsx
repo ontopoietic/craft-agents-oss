@@ -1429,11 +1429,27 @@ function AppShellContent({
   const remoteWorkspaceId = activeWorkspace?.remoteServer?.remoteWorkspaceId
   const workspaceSessionMetas = useMemo(() => {
     const metas = Array.from(sessionMetaMap.values())
-    const isVisible = (s: SessionMeta) => showHiddenSessions || !s.hidden
-    if (!activeWorkspaceId) return metas.filter(isVisible)
-    return metas.filter(s =>
-      isVisible(s) && (s.workspaceId === activeWorkspaceId || (remoteWorkspaceId && s.workspaceId === remoteWorkspaceId))
-    )
+    const inScope = (s: SessionMeta) =>
+      !activeWorkspaceId || s.workspaceId === activeWorkspaceId || (!!remoteWorkspaceId && s.workspaceId === remoteWorkspaceId)
+    // ORCHA §bg-child-sessions (p9): child sessions (parentSessionId) are exempt
+    // from `meta.hidden` when their parent (chain) resolves to a visible, in-scope
+    // session — they render nested (collapsed by default) under the parent in the
+    // list instead of being hidden. `hidden` keeps its effect only for parentless
+    // sessions and orphaned children (parent missing / out of scope / itself hidden).
+    const isVisible = (s: SessionMeta): boolean => {
+      if (showHiddenSessions || !s.hidden) return true
+      let cur = s
+      const seen = new Set<string>([s.id])
+      while (cur.parentSessionId) {
+        const parent = sessionMetaMap.get(cur.parentSessionId)
+        if (!parent || seen.has(parent.id) || !inScope(parent)) return false
+        if (!parent.hidden) return true
+        seen.add(parent.id)
+        cur = parent
+      }
+      return false
+    }
+    return metas.filter(s => inScope(s) && isVisible(s))
   }, [sessionMetaMap, activeWorkspaceId, remoteWorkspaceId, showHiddenSessions])
 
   // Active sessions exclude archived - use this for all counts and filters except archived view
