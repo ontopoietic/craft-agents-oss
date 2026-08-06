@@ -76,3 +76,7 @@ export { handleRecall } from './recall.ts';
 export type { RecallArgs } from './recall.ts';
 export { handleListBackgroundTasks } from './list-background-tasks.ts';
 export type { ListBackgroundTasksArgs } from './list-background-tasks.ts';
+export { handleCreateTask } from './create-task.ts';
+export type { CreateTaskArgs } from './create-task.ts';
+export { handleArchiveSession } from './archive-session.ts';
+export type { ArchiveSessionArgs } from './archive-session.ts';

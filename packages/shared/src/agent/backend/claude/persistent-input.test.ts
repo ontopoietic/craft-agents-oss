@@ -2,16 +2,24 @@ import { describe, it, expect } from 'bun:test';
 import { createPushableInputStream, resolveKeepBackgroundTasksAlive } from './persistent-input.ts';
 
 describe('resolveKeepBackgroundTasksAlive', () => {
-  it('is ON by default when unset (opt-out; mechanism has landed)', () => {
-    expect(resolveKeepBackgroundTasksAlive({})).toBe(true);
+  // ORCHA §bg-child-sessions p6: streaming mode (default ON) is folded into the
+  // resolver — under streaming there is nothing for a persistent query to keep
+  // alive, so the flag only takes effect once streaming is explicitly disabled.
+  const noStreaming = { ORCHA_STREAMING_MODE: '0' };
+  it('is OFF under streaming mode regardless of the keep-alive flag', () => {
+    expect(resolveKeepBackgroundTasksAlive({})).toBe(false);
+    expect(resolveKeepBackgroundTasksAlive({ CRAFT_KEEP_BG_AGENTS_ALIVE: '1' })).toBe(false);
   });
-  it('is ON for "1"/"true"', () => {
-    expect(resolveKeepBackgroundTasksAlive({ CRAFT_KEEP_BG_AGENTS_ALIVE: '1' })).toBe(true);
-    expect(resolveKeepBackgroundTasksAlive({ CRAFT_KEEP_BG_AGENTS_ALIVE: 'true' })).toBe(true);
+  it('is ON by default when unset and streaming is off (opt-out; mechanism has landed)', () => {
+    expect(resolveKeepBackgroundTasksAlive({ ...noStreaming })).toBe(true);
+  });
+  it('is ON for "1"/"true" when streaming is off', () => {
+    expect(resolveKeepBackgroundTasksAlive({ ...noStreaming, CRAFT_KEEP_BG_AGENTS_ALIVE: '1' })).toBe(true);
+    expect(resolveKeepBackgroundTasksAlive({ ...noStreaming, CRAFT_KEEP_BG_AGENTS_ALIVE: 'true' })).toBe(true);
   });
   it('is OFF for "0"/"false" (explicit kill-switch)', () => {
-    expect(resolveKeepBackgroundTasksAlive({ CRAFT_KEEP_BG_AGENTS_ALIVE: '0' })).toBe(false);
-    expect(resolveKeepBackgroundTasksAlive({ CRAFT_KEEP_BG_AGENTS_ALIVE: 'false' })).toBe(false);
+    expect(resolveKeepBackgroundTasksAlive({ ...noStreaming, CRAFT_KEEP_BG_AGENTS_ALIVE: '0' })).toBe(false);
+    expect(resolveKeepBackgroundTasksAlive({ ...noStreaming, CRAFT_KEEP_BG_AGENTS_ALIVE: 'false' })).toBe(false);
   });
 });
 
