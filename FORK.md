@@ -189,6 +189,16 @@ Pipeline: **Observer** (Haiku, extrahiert pro Session Observations als Markdown-
 
 > **Keep-Alive/Streaming-Konflikt — GELÖST (Branch `swarm/bg-child-sessions`):** Der bis 2026-07-09 offene Konflikt zwischen WS2-Keep-Alive (`CRAFT_KEEP_BG_AGENTS_ALIVE`, persistente Query für überlebende Background-Subagents) und Streaming-Mode (`ORCHA_STREAMING_MODE`, frische Query pro Turn für Observation-Replacement) ist über **Child-Session-Routing** aufgelöst: Unter Streaming-Modus leitet ein zentraler PreToolUse-Interceptor (`packages/shared/src/agent/core/pre-tool-use.ts`, Schritt 0) jeden In-Query-Background-Spawn (`Agent`/`Task` mit `run_in_background=true`) per Deny+lenkender Begründung auf `spawn_session` um; das Ergebnis kommt über `SessionManager.notifyParentOnChildComplete` (Watcher auf `onSessionComplete`) als `<background_result>`-Nachricht zurück in den Parent-Turn. Damit hat die persistente Query nichts mehr am Leben zu halten — `claude-agent.ts::keepBackgroundTasksAlive` ist jetzt `resolveKeepBackgroundTasksAlive() && !isStreamingModeEnabled()` (Streaming gewinnt immer). Kill-Switch: `ORCHA_BG_CHILD_SESSIONS=0` stellt exaktes Upstream-Verhalten wieder her. **Neue Berührungspunkte für künftige Merges:** `pre-tool-use.ts` (neuer Schritt 0 vor der Permission-Mode-Prüfung), `SessionManager.ts` (`notifyParentOnComplete`-Feld auf `ManagedSession`, `notifyParentOnChildComplete`-Watcher, `RunningBackgroundTask.kind`), `base-agent.ts`/`spawn-session-tool.ts` (Cwd-Vererbung ergänzt), `system.ts` (neuer bedingter „Background Work"-Abschnitt). Pi-Backend-Parität ist bewusst nicht Teil dieses Commits (Pi hat kein Keep-Alive-Äquivalent; der Interceptor gilt dort über die geteilte `runPreToolUseChecks()`-Pipeline mit, was für Pi separat verifiziert werden sollte, bevor Pi eigene Background-Subagent-Patterns bekommt).
 
+### 7. set_session_status: Selbst-Schließung erlaubt (bewusste Upstream-Abweichung, 2026-08-07)
+
+Upstream (seit v0.11.0-Kanban) lehnt closed-Statusse („done"/„cancelled") im `set_session_status`-Tool pauschal ab („the human owns closure"). Im Fork dürfen Agenten ihre **eigene** Session schließen — Swarm-Rollen setzen sich nach abgeliefertem Handoff auf `done` (swarm-rollen-Konvention); erzwungenes „needs-review" ließ fertige Rollen-Sessions das Board zumüllen. **Fremd-Sessions bleiben geschützt** (Ablehnung wie Upstream).
+
+**Berührt Upstream-Dateien (Konflikt-Kandidaten):**
+- `packages/session-tools-core/src/handlers/set-session-status.ts` — Guard nur noch für `targetsOtherSession`
+- `packages/session-tools-core/src/handlers/set-session-status.test.ts` — Self-Close-Fälle ergänzt
+- `packages/session-tools-core/src/tool-defs.ts` — Tool-Beschreibung angepasst
+- `packages/shared/src/prompts/system.ts` — „Setting status"-Absatz angepasst
+
 ---
 
 ## Orcha CLI Änderungen

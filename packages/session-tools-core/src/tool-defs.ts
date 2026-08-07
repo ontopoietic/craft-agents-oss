@@ -523,7 +523,7 @@ Only set anchors when the connection to the artifact is explicit. Don't guess.`,
 Use this to reflect progress or trigger status-based automations (SessionStatusChange events).
 Omit sessionId to target the current session.
 
-IMPORTANT: never move a task into a closed status (such as "done" or "cancelled") yourself — closing a task is the user's decision, made on the board. You may prepare and hand off work by setting an open status like "needs-review"; the user reviews and closes it. Closed-status calls are rejected.`,
+IMPORTANT: never move ANOTHER session into a closed status (such as "done" or "cancelled") — closing someone else's task is the user's decision, made on the board; such calls are rejected. You MAY set a closed status on your OWN session (omit sessionId) once your work is fully complete and handed off — e.g. swarm role sessions set themselves "done" after delivering their handoff. When the user still needs to review the work, prefer "needs-review".`,
 
   archive_session: `Archive or unarchive another session in this workspace by ID.
 
