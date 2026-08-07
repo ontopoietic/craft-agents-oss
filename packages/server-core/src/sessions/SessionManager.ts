@@ -1330,6 +1330,17 @@ export class SessionManager implements ISessionManager {
     this.automationBinder = fn
   }
 
+  // ORCHA: run-a-task hook, installed by registerTasksHandlers so the agent-facing
+  // create_task tool (createTaskFn below) can start a run through the SAME
+  // per-workspace TaskRunner registry the tasks:run RPC uses. A second runner
+  // instance here would fork the in-memory run registry (pause/stop from the UI
+  // would not find agent-started runs) — hence injection instead of construction.
+  private taskRunHook: ((workspaceId: string, slug: string, orchestratorSessionId: string) => { runId: string }) | null = null
+
+  setTaskRunHook(fn: (workspaceId: string, slug: string, orchestratorSessionId: string) => { runId: string }): void {
+    this.taskRunHook = fn
+  }
+
   private browserPaneManager: IBrowserPaneManager | null = null
   private rpcServer: RpcServer | null = null
   private remoteBpms = new Map<string, RemoteBrowserPaneManager>()
@@ -4379,8 +4390,19 @@ export class SessionManager implements ISessionManager {
             if (missing.length) warnings.push(`Unknown skills (kept in the spec, but they don't exist in this workspace): ${missing.join(', ')}`)
           }
 
-          // A spec requires ≥1 node; synthesize the single executable node from the
-          // description. Multi-node DAG authoring stays with the TaskEditor/generate flow.
+          // A spec requires ≥1 node. ORCHA deviation: explicit `nodes` (e.g. a
+          // swarm role chain with per-node model overrides) are accepted;
+          // without them, synthesize the single executable node from the
+          // description as upstream does.
+          const specNodes = input.nodes?.length
+            ? input.nodes.map(n => ({
+                id: n.id,
+                ...(n.title ? { title: n.title } : {}),
+                prompt: n.prompt,
+                ...(n.dependsOn?.length ? { depends_on: n.dependsOn } : {}),
+                ...(n.model ? { model: n.model } : {}),
+              }))
+            : [{ id: 'main', title: input.title, prompt: input.description }]
           const parsed = parseTaskSpec({
             id: slug,
             title: input.title,
@@ -4393,14 +4415,34 @@ export class SessionManager implements ISessionManager {
             ...(input.model || input.llmConnection
               ? { defaults: { ...(input.model ? { model: input.model } : {}), ...(input.llmConnection ? { llmConnection: input.llmConnection } : {}) } }
               : {}),
-            nodes: [{ id: 'main', title: input.title, prompt: input.description }],
+            nodes: specNodes,
           })
           if (!parsed.success) {
             throw new Error(`Invalid task spec: ${parsed.error.issues.map(i => i.message).join('; ')}`)
           }
 
           const created = await createTaskFromSpec(this, ws.id, ws.rootPath, parsed.data)
-          return { ...created, warnings: [...warnings, ...created.warnings] }
+          const result = { ...created, warnings: [...warnings, ...created.warnings] }
+
+          // ORCHA deviation from upstream: `start: true` runs the task right away
+          // (via the injected tasks:run TaskRunner hook) instead of leaving the
+          // card in "todo". Fail-soft: a missing hook or a run error downgrades
+          // to the upstream unstarted behavior plus a warning — the created task
+          // is never rolled back.
+          if (input.start) {
+            if (!this.taskRunHook) {
+              result.warnings.push('start requested, but no task runner is available in this context — task created unstarted.')
+            } else {
+              try {
+                const run = this.taskRunHook(ws.id, created.slug, created.orchestratorSessionId)
+                return { ...result, started: true, runId: run.runId }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                result.warnings.push(`start requested, but the run could not be started: ${message} — task created unstarted.`)
+              }
+            }
+          }
+          return result
         },
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id

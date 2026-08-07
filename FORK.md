@@ -199,6 +199,23 @@ Upstream (seit v0.11.0-Kanban) lehnt closed-Statusse („done"/„cancelled") im
 - `packages/session-tools-core/src/tool-defs.ts` — Tool-Beschreibung angepasst
 - `packages/shared/src/prompts/system.ts` — „Setting status"-Absatz angepasst
 
+### 8. create_task: Auto-Start + DAG-Nodes (bewusste Upstream-Abweichung, 2026-08-07)
+
+Upstream-`create_task` (v0.11.2) legt Tasks nur ungestartet mit einem synthetischen Single-Node an. Fork-Erweiterung für Swarm-Ketten: `start: true` startet den Run direkt nach Anlage (User-Go für die Kette = Run-Freigabe), `nodes[]` erlaubt explizite DAG-Autorschaft (id/title/prompt/dependsOn/model je Node → Rollen-Kette mit Modell-Tiering). Der Start läuft über einen von `registerTasksHandlers` injizierten Hook durch **dieselbe** per-Workspace-TaskRunner-Registry wie `tasks:run` (agent-gestartete Runs bleiben per UI pausier-/stoppbar). Fail-soft: ohne Hook oder bei Run-Fehler wird der Task ungestartet angelegt + Warning.
+
+**Berührt Upstream-Dateien (Konflikt-Kandidaten):**
+- `packages/session-tools-core/src/context.ts` — `CreateTaskInput.start/nodes`, `CreateTaskResult.started/runId`
+- `packages/session-tools-core/src/tool-defs.ts` — Schema + Beschreibung
+- `packages/server-core/src/sessions/SessionManager.ts` — `setTaskRunHook` + `createTaskFn`-Erweiterung
+- `packages/server-core/src/handlers/rpc/tasks.ts` — Hook-Installation in `registerTasksHandlers`
+- `packages/server-core/src/handlers/session-manager-interface.ts` — `setTaskRunHook?` im Interface
+
+### 9. bg-child-sessions p10: Hintergrund-Shells (2026-08-07)
+
+Das SDK 0.3.220 (v0.11.3-Merge) drängt Modelle aktiv zu Bash `run_in_background` (Foreground-`sleep` blockiert, Monitor-Tool, Versprechen „re-invokes you when it exits") — unter Streaming-Mode stirbt die detachte Shell aber am Turn-Ende, still (Vorfall 2026-08-07: Hardener-Rolle detachte einen ~10-Min-Stryker-Run und beendete den Turn auf dieses Versprechen hin). Die p1–p9-Abdeckung galt nur Agent/Task/Workflow; p10 schließt die Shell-Lücke: Step-0-**Reminder** für Bash mit `run_in_background=true` (kein Deny — In-Turn-Hintergrund-Shells bleiben legitim) und Stop-Hook-Guard trackt jetzt auch `shell_backgrounded`/`shell_killed` im selben Set.
+
+**Berührt Dateien:** `packages/shared/src/agent/core/pre-tool-use.ts` (Bash-Leg im defaultAsyncReminder), `core/stop-hook-guard.ts` (+Shell-Events, Reason-Text), Tests in `__tests__/{stop-hook-guard.test.ts,pre-tool-use-checks.isolated.ts}`.
+
 ---
 
 ## Orcha CLI Änderungen

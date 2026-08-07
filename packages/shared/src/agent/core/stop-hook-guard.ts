@@ -17,7 +17,7 @@
  */
 
 export interface StopHookGuardInput {
-  /** Count of in-query background tasks (Agent/Task/Workflow) still running this turn. */
+  /** Count of in-query background tasks (Agent/Task/Workflow) and background shells (Bash run_in_background) still running this turn. */
   runningTaskCount: number;
   /** Whether streaming mode is active (keep-alive is off under streaming — see message-provider.ts). */
   streamingModeEnabled: boolean;
@@ -48,9 +48,10 @@ export function buildStopHookGuardDecision(input: StopHookGuardInput): StopHookG
   return {
     block: true,
     reason:
-      `You still have ${n} running in-query background task${plural} (they will NOT survive turn end in this app). ` +
-      'Either wait for/drain them now (TaskOutput with block:true), stop them (TaskStop), or re-dispatch the work via ' +
-      'spawn_session / the task-DAG conductor — then end your turn.',
+      `You still have ${n} running in-query background task${plural} or shell${plural} (they will NOT survive turn end in this app, ` +
+      'and their completion will NOT re-invoke you — despite what the tool description promises). ' +
+      'Either wait for/drain them now (TaskOutput/BashOutput with block, or re-run the command in the foreground), ' +
+      'stop them (TaskStop/KillShell), or re-dispatch the work via spawn_session / the task-DAG conductor — then end your turn.',
   };
 }
 
@@ -64,12 +65,25 @@ export function buildStopHookGuardDecision(input: StopHookGuardInput): StopHookG
  */
 export function applyTaskLifecycleEvent(
   ids: Set<string>,
-  event: { type: string; taskId?: string },
+  event: { type: string; taskId?: string; shellId?: string },
 ): Set<string> {
   if (event.type === 'task_backgrounded' && event.taskId) {
     ids.add(event.taskId);
   } else if (event.type === 'task_completed' && event.taskId) {
     ids.delete(event.taskId);
+  } else if (event.type === 'shell_backgrounded' && event.shellId) {
+    // ORCHA p10 — background SHELLS (Bash run_in_background) die at turn end
+    // under streaming exactly like in-query subagents, but the SDK ≥0.3.220
+    // Bash tool description promises "re-invokes you when it exits", which
+    // can never be kept here (production incident: a role session detached a
+    // ~10-min mutation run, ended its turn on that promise, and the job died
+    // silently). Track shells in the same set so the Stop-hook guard fires.
+    // A shell that finished naturally may linger in the set (no in-turn
+    // completion event exists) — the guard blocks at most once per turn, and
+    // its message steers the model to check the output, which resolves it.
+    ids.add(event.shellId);
+  } else if (event.type === 'shell_killed' && event.shellId) {
+    ids.delete(event.shellId);
   }
   return ids;
 }

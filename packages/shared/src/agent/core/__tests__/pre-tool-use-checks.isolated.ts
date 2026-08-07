@@ -245,6 +245,54 @@ describe('runPreToolUseChecks', () => {
       }
     });
 
+    // ORCHA p10 — background Bash: never denied, but carries a steering
+    // reminder under streaming+flag (background shells die at turn end).
+    it('allows background Bash but attaches the shell reminder under streaming+flag', () => {
+      process.env.ORCHA_STREAMING_MODE = '1';
+      delete process.env.ORCHA_BG_CHILD_SESSIONS;
+
+      const result = runPreToolUseChecks(createInput({
+        toolName: 'Bash',
+        input: { command: 'sleep 600', run_in_background: true },
+      }));
+
+      expect(result.type).toBe('allow');
+      if (result.type === 'allow') {
+        expect(result.additionalContext).toContain('background shells');
+        expect(result.additionalContext).toContain('KillShell');
+      }
+    });
+
+    it('attaches no shell reminder to foreground Bash', () => {
+      process.env.ORCHA_STREAMING_MODE = '1';
+      delete process.env.ORCHA_BG_CHILD_SESSIONS;
+
+      const result = runPreToolUseChecks(createInput({
+        toolName: 'Bash',
+        input: { command: 'echo hi' },
+      }));
+
+      expect(result.type).toBe('allow');
+      if (result.type === 'allow') {
+        expect(result.additionalContext).toBeUndefined();
+      }
+    });
+
+    it('attaches no shell reminder to background Bash with streaming off', () => {
+      process.env.ORCHA_STREAMING_MODE = '0';
+      delete process.env.ORCHA_BG_CHILD_SESSIONS;
+
+      const result = runPreToolUseChecks(createInput({
+        toolName: 'Bash',
+        input: { command: 'sleep 600', run_in_background: true },
+      }));
+
+      expect(result.type).toBe('allow');
+      if (result.type === 'allow') {
+        expect(result.additionalContext).toBeUndefined();
+      }
+    });
+
     it('does not gate unrelated tools even under streaming+flag', () => {
       process.env.ORCHA_STREAMING_MODE = '1';
       delete process.env.ORCHA_BG_CHILD_SESSIONS;

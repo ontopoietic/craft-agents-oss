@@ -80,6 +80,34 @@ describe('applyTaskLifecycleEvent', () => {
     expect(ids.has('agent-1')).toBe(true);
   });
 
+  // ORCHA p10 — background shells are tracked in the same set as in-query tasks.
+  it('adds the shell id on shell_backgrounded', () => {
+    const ids = new Set<string>();
+    applyTaskLifecycleEvent(ids, { type: 'shell_backgrounded', shellId: 'shell-1' });
+    expect(ids.has('shell-1')).toBe(true);
+  });
+
+  it('removes the shell id on shell_killed', () => {
+    const ids = new Set<string>(['shell-1']);
+    applyTaskLifecycleEvent(ids, { type: 'shell_killed', shellId: 'shell-1' });
+    expect(ids.size).toBe(0);
+  });
+
+  it('is a no-op when shellId is missing on shell events', () => {
+    const ids = new Set<string>();
+    applyTaskLifecycleEvent(ids, { type: 'shell_backgrounded' });
+    expect(ids.size).toBe(0);
+  });
+
+  it('tracks tasks and shells independently in the same set', () => {
+    const ids = new Set<string>();
+    applyTaskLifecycleEvent(ids, { type: 'task_backgrounded', taskId: 'agent-1' });
+    applyTaskLifecycleEvent(ids, { type: 'shell_backgrounded', shellId: 'shell-1' });
+    expect(ids.size).toBe(2);
+    applyTaskLifecycleEvent(ids, { type: 'shell_killed', shellId: 'shell-1' });
+    expect([...ids]).toEqual(['agent-1']);
+  });
+
   it('is a no-op when taskId is missing', () => {
     const ids = new Set<string>();
     applyTaskLifecycleEvent(ids, { type: 'task_backgrounded' });

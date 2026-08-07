@@ -783,18 +783,33 @@ export function runPreToolUseChecks(ctx: PreToolUseInput): PreToolUseCheckResult
   // check — Workflow has no such input) whenever streaming+flag are active.
   // Never deny — Workflow must stay usable; the Stop-hook guard is the
   // structural backstop if the model ends its turn without draining it.
+  // ORCHA §bg-child-sessions p10 — background SHELLS (Bash run_in_background)
+  // are the third leg of the same trap: the SDK ≥0.3.220 Bash description
+  // promises "keeps running across turns and re-invokes you when it exits",
+  // but under streaming the subprocess (and the shell with it) is torn down at
+  // turn end, so that promise can never be kept (production incident: a role
+  // session detached a ~10-min mutation run on that promise and it died
+  // silently). Not a deny — in-turn background shells (start server, poll,
+  // kill) stay legitimate — just a steering reminder; the Stop-hook guard is
+  // the structural backstop (it tracks shell_backgrounded/shell_killed too).
   const isWorkflowTool = toolName === 'Workflow';
+  const isBackgroundBash = toolName === 'Bash' && input.run_in_background === true;
   const defaultAsyncReminder =
-    (isParentTaskTool(toolName) && input.run_in_background !== true || isWorkflowTool) &&
+    (isParentTaskTool(toolName) && input.run_in_background !== true || isWorkflowTool || isBackgroundBash) &&
     isStreamingModeEnabled() &&
     isBgChildSessionsFlagEnabled()
       ? isWorkflowTool
         ? 'Reminder: the Workflow tool is background-by-design and does not survive turn end under ' +
           'streaming mode. Drain it (TaskOutput with block) before ending your turn, or accept that ' +
           'it will be marked orphaned if the turn ends first.'
-        : 'Reminder: under streaming mode, in-query subagents do not survive turn end. ' +
-          'Drain this task (TaskOutput with block) before ending your turn, or use ' +
-          'spawn_session for work that must survive past this turn.'
+        : isBackgroundBash
+          ? 'Reminder: background shells do NOT survive turn end in this app, and their completion will ' +
+            'NOT re-invoke you (despite the tool description). For long jobs, run the command blocking in ' +
+            'the foreground instead. If you do background it, you MUST drain it (BashOutput/TaskOutput with ' +
+            'block) or kill it (KillShell) before ending your turn.'
+          : 'Reminder: under streaming mode, in-query subagents do not survive turn end. ' +
+            'Drain this task (TaskOutput with block) before ending your turn, or use ' +
+            'spawn_session for work that must survive past this turn.'
       : undefined;
 
   // ============================================================
