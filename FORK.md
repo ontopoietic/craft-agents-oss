@@ -210,6 +210,8 @@ Upstream-`create_task` (v0.11.2) legt Tasks nur ungestartet mit einem synthetisc
 - `packages/server-core/src/handlers/rpc/tasks.ts` — Hook-Installation in `registerTasksHandlers`
 - `packages/server-core/src/handlers/session-manager-interface.ts` — `setTaskRunHook?` im Interface
 
+**p12 — Orchestrator-Nesting (2026-08-09):** Agent-erstellte Tasks (create_task aus einer Session) setzen `parentSessionId` = aufrufende Session auf den Orchestrator (`createTaskFromSpec` +`opts.parentSessionId`) — die Task-Familie (Orchestrator + Node-Sessions) erscheint als Teilbaum unter dem Conductor (p9-Nesting) statt top-level. User-erstellte Tasks (Editor/RPC) bleiben parentlos. Kein `notifyParentOnComplete` (p11 besitzt die Zustellung — sonst Doppel-Notification). Ergänzend Skill-Regel: Conductor archiviert nach Settlement die **Node**-Session (nicht den Orchestrator = Board-Karte).
+
 **p11 — Task-Run-Rückkanal (2026-08-09):** Agent-gestartete Runs melden ihr Settlement (Status + Verdict-Text des Orchestrators, 16-KB-Cap) als `<background_result task="task-run:<slug>">`-Nachricht in die aufrufende Session zurück — via `TaskRunner.waitUntilSettled` im Hook + `notifyParentOnTaskRunSettled()` (SessionManager), analog `notifyParentOnChildComplete` für spawn_session-Kinder. Ohne diesen Kanal hatte der Conductor keinen Wake-Pfad (Vorfall 2026-08-09: Run pass, Conductor wartete mit Monitor, Watch starb am Turn-Ende, Swarm stand).
 
 ### 9. bg-child-sessions p10: Hintergrund-Shells (2026-08-07)

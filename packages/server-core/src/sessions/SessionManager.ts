@@ -4463,7 +4463,10 @@ export class SessionManager implements ISessionManager {
             throw new Error(`Invalid task spec: ${parsed.error.issues.map(i => i.message).join('; ')}`)
           }
 
-          const created = await createTaskFromSpec(this, ws.id, ws.rootPath, parsed.data)
+          const created = await createTaskFromSpec(this, ws.id, ws.rootPath, parsed.data, {
+            // Nest the orchestrator under the invoking session (see createTaskFromSpec).
+            parentSessionId: managed.id,
+          })
           const result = { ...created, warnings: [...warnings, ...created.warnings] }
 
           // ORCHA deviation from upstream: `start: true` runs the task right away

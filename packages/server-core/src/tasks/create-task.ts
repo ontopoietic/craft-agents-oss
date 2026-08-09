@@ -72,13 +72,19 @@ export async function createTaskFromSpec(
   workspaceId: string,
   workspaceRoot: string,
   spec: TaskSpec,
-  opts?: { save?: boolean },
+  opts?: { save?: boolean; parentSessionId?: string },
 ): Promise<CreateTaskFromSpecResult> {
   if (opts?.save !== false) saveTaskSpec(workspaceRoot, spec)
 
   const orchestrator = await sessionManager.createSession(workspaceId, {
     name: spec.title,
     projectId: spec.project,
+    // ORCHA: agent-created tasks nest their orchestrator under the invoking
+    // session in the session list (p9 nested rows) — the task family
+    // (orchestrator + node sessions) then reads as one subtree under the
+    // conductor instead of scattering at top level. No notifyParentOnComplete
+    // here: run-result delivery is owned by the p11 task-run settle channel.
+    ...(opts?.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
     sessionStatus: 'todo',
     // Stable linkage: this session orchestrates task `spec.id` across all of its runs.
     taskSlug: spec.id,
