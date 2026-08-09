@@ -1335,10 +1335,52 @@ export class SessionManager implements ISessionManager {
   // per-workspace TaskRunner registry the tasks:run RPC uses. A second runner
   // instance here would fork the in-memory run registry (pause/stop from the UI
   // would not find agent-started runs) — hence injection instead of construction.
-  private taskRunHook: ((workspaceId: string, slug: string, orchestratorSessionId: string) => { runId: string }) | null = null
+  private taskRunHook: ((workspaceId: string, slug: string, orchestratorSessionId: string) => { runId: string; settled: Promise<{ status: string }> }) | null = null
 
-  setTaskRunHook(fn: (workspaceId: string, slug: string, orchestratorSessionId: string) => { runId: string }): void {
+  setTaskRunHook(fn: (workspaceId: string, slug: string, orchestratorSessionId: string) => { runId: string; settled: Promise<{ status: string }> }): void {
     this.taskRunHook = fn
+  }
+
+  /**
+   * ORCHA p11 — deliver an agent-started task run's terminal result back into
+   * the invoking (conductor) session as a `background_result` message, mirroring
+   * `notifyParentOnChildComplete` for spawn_session children. Without this, a
+   * conductor that starts a run via create_task(start:true) has NO wake path —
+   * under streaming mode every in-turn wait (Monitor, background shell) dies at
+   * turn end, so the run finished and nobody ever learned of it (incident
+   * 2026-08-09: swarm stopped silently after the gherkin-writer run passed).
+   * Body = the orchestrator's final text (the verdict turn), capped like child
+   * results; delivery uses sendMessage (queued when the conductor is mid-turn).
+   */
+  private async notifyParentOnTaskRunSettled(
+    parentId: string,
+    slug: string,
+    runId: string,
+    orchestratorSessionId: string,
+    status: string,
+  ): Promise<void> {
+    const parent = this.sessions.get(parentId)
+    if (!parent) {
+      sessionLog.warn(`[tasks] parent session ${parentId} not found for settled run ${slug}/${runId}; dropping background_result`)
+      return
+    }
+    const verdictText = this.getSessionFinalText(orchestratorSessionId)?.trim() ?? ''
+    const header = `Task run "${slug}" (${runId}) settled with status: ${status}.`
+    let body = verdictText ? `${header}\n\n${verdictText}` : header
+    const cap = SessionManager.BG_CHILD_RESULT_CAP_BYTES
+    const truncationNote = `\n\n[Result truncated — read the full verdict in session ${orchestratorSessionId}.]`
+    if (Buffer.byteLength(body, 'utf8') > cap) {
+      const contentCap = Math.max(0, cap - Buffer.byteLength(truncationNote, 'utf8'))
+      body = Buffer.from(body, 'utf8').subarray(0, contentCap).toString('utf8') + truncationNote
+    }
+    const resultStatus = status === 'completed' ? 'completed' : 'failed'
+    const wrapped = [
+      `<background_result task="task-run:${slug}" childSessionId="${orchestratorSessionId}" status="${resultStatus}">`,
+      body,
+      `</background_result>`,
+    ].join('\n')
+    sessionLog.info(`[tasks] delivering task-run background_result`, { slug, runId, parentId, status })
+    await this.sendMessage(parentId, wrapped, undefined)
   }
 
   private browserPaneManager: IBrowserPaneManager | null = null
@@ -4435,6 +4477,11 @@ export class SessionManager implements ISessionManager {
             } else {
               try {
                 const run = this.taskRunHook(ws.id, created.slug, created.orchestratorSessionId)
+                // p11: when the run settles, deliver the verdict back into the
+                // invoking session — fire-and-forget, never blocks the tool result.
+                void run.settled
+                  .then(s => this.notifyParentOnTaskRunSettled(managed.id, created.slug, run.runId, created.orchestratorSessionId, s.status))
+                  .catch(err => sessionLog.error(`[tasks] task-run settle notification failed for ${created.slug}:`, err))
                 return { ...result, started: true, runId: run.runId }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)

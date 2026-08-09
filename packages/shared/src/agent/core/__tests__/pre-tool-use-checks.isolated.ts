@@ -293,6 +293,38 @@ describe('runPreToolUseChecks', () => {
       }
     });
 
+    // ORCHA p11b — Monitor: never denied, but reminded that watches die at turn end.
+    it('allows Monitor but attaches the watch reminder under streaming+flag', () => {
+      process.env.ORCHA_STREAMING_MODE = '1';
+      delete process.env.ORCHA_BG_CHILD_SESSIONS;
+
+      const result = runPreToolUseChecks(createInput({
+        toolName: 'Monitor',
+        input: { path: '/tmp/run-log.jsonl' },
+      }));
+
+      expect(result.type).toBe('allow');
+      if (result.type === 'allow') {
+        expect(result.additionalContext).toContain('Monitor watches');
+        expect(result.additionalContext).toContain('background_result');
+      }
+    });
+
+    it('attaches no Monitor reminder with streaming off', () => {
+      process.env.ORCHA_STREAMING_MODE = '0';
+      delete process.env.ORCHA_BG_CHILD_SESSIONS;
+
+      const result = runPreToolUseChecks(createInput({
+        toolName: 'Monitor',
+        input: { path: '/tmp/run-log.jsonl' },
+      }));
+
+      expect(result.type).toBe('allow');
+      if (result.type === 'allow') {
+        expect(result.additionalContext).toBeUndefined();
+      }
+    });
+
     it('does not gate unrelated tools even under streaming+flag', () => {
       process.env.ORCHA_STREAMING_MODE = '1';
       delete process.env.ORCHA_BG_CHILD_SESSIONS;

@@ -792,10 +792,17 @@ export function runPreToolUseChecks(ctx: PreToolUseInput): PreToolUseCheckResult
   // silently). Not a deny — in-turn background shells (start server, poll,
   // kill) stay legitimate — just a steering reminder; the Stop-hook guard is
   // the structural backstop (it tracks shell_backgrounded/shell_killed too).
+  // ORCHA p11b — the Monitor tool is the fourth leg: it registers a watch that
+  // fires ACROSS turns, which under streaming can never happen (the subprocess
+  // — and the watch with it — dies at turn end). Incident 2026-08-09: a swarm
+  // conductor Monitor-watched a task run-log, ended its turn, and the watch
+  // died 3 minutes before the run completed. Not a deny — an in-turn Monitor
+  // with an until-condition the model awaits is legitimate — just steering.
   const isWorkflowTool = toolName === 'Workflow';
   const isBackgroundBash = toolName === 'Bash' && input.run_in_background === true;
+  const isMonitorTool = toolName === 'Monitor';
   const defaultAsyncReminder =
-    (isParentTaskTool(toolName) && input.run_in_background !== true || isWorkflowTool || isBackgroundBash) &&
+    (isParentTaskTool(toolName) && input.run_in_background !== true || isWorkflowTool || isBackgroundBash || isMonitorTool) &&
     isStreamingModeEnabled() &&
     isBgChildSessionsFlagEnabled()
       ? isWorkflowTool
@@ -807,9 +814,14 @@ export function runPreToolUseChecks(ctx: PreToolUseInput): PreToolUseCheckResult
             'NOT re-invoke you (despite the tool description). For long jobs, run the command blocking in ' +
             'the foreground instead. If you do background it, you MUST drain it (BashOutput/TaskOutput with ' +
             'block) or kill it (KillShell) before ending your turn.'
-          : 'Reminder: under streaming mode, in-query subagents do not survive turn end. ' +
-            'Drain this task (TaskOutput with block) before ending your turn, or use ' +
-            'spawn_session for work that must survive past this turn.'
+          : isMonitorTool
+            ? 'Reminder: Monitor watches do NOT survive turn end in this app — the watch dies with the turn ' +
+              'and will never re-invoke you. Only rely on a Monitor you await within THIS turn. For work that ' +
+              'completes after your turn (task runs, child sessions), end your turn instead: results arrive ' +
+              'as background_result messages.'
+            : 'Reminder: under streaming mode, in-query subagents do not survive turn end. ' +
+              'Drain this task (TaskOutput with block) before ending your turn, or use ' +
+              'spawn_session for work that must survive past this turn.'
       : undefined;
 
   // ============================================================

@@ -114,8 +114,12 @@ export function registerTasksHandlers(server: RpcServer, deps: HandlerDeps): voi
   // start runs through this same per-workspace runner registry, so agent-started
   // runs are pausable/stoppable via the normal tasks:* RPCs.
   deps.sessionManager.setTaskRunHook?.((workspaceId, slug, orchestratorSessionId) => {
-    const snapshot = runnerFor(workspaceId).run(slug, { orchestratorSessionId })
-    return { runId: snapshot.runId }
+    const runner = runnerFor(workspaceId)
+    const snapshot = runner.run(slug, { orchestratorSessionId })
+    return {
+      runId: snapshot.runId,
+      settled: runner.waitUntilSettled(slug, snapshot.runId).then(s => ({ status: s.status })),
+    }
   })
 
   // tasks:validate — lint/dry-run; no side effects.

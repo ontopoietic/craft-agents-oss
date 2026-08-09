@@ -210,11 +210,15 @@ Upstream-`create_task` (v0.11.2) legt Tasks nur ungestartet mit einem synthetisc
 - `packages/server-core/src/handlers/rpc/tasks.ts` — Hook-Installation in `registerTasksHandlers`
 - `packages/server-core/src/handlers/session-manager-interface.ts` — `setTaskRunHook?` im Interface
 
+**p11 — Task-Run-Rückkanal (2026-08-09):** Agent-gestartete Runs melden ihr Settlement (Status + Verdict-Text des Orchestrators, 16-KB-Cap) als `<background_result task="task-run:<slug>">`-Nachricht in die aufrufende Session zurück — via `TaskRunner.waitUntilSettled` im Hook + `notifyParentOnTaskRunSettled()` (SessionManager), analog `notifyParentOnChildComplete` für spawn_session-Kinder. Ohne diesen Kanal hatte der Conductor keinen Wake-Pfad (Vorfall 2026-08-09: Run pass, Conductor wartete mit Monitor, Watch starb am Turn-Ende, Swarm stand).
+
 ### 9. bg-child-sessions p10: Hintergrund-Shells (2026-08-07)
 
 Das SDK 0.3.220 (v0.11.3-Merge) drängt Modelle aktiv zu Bash `run_in_background` (Foreground-`sleep` blockiert, Monitor-Tool, Versprechen „re-invokes you when it exits") — unter Streaming-Mode stirbt die detachte Shell aber am Turn-Ende, still (Vorfall 2026-08-07: Hardener-Rolle detachte einen ~10-Min-Stryker-Run und beendete den Turn auf dieses Versprechen hin). Die p1–p9-Abdeckung galt nur Agent/Task/Workflow; p10 schließt die Shell-Lücke: Step-0-**Reminder** für Bash mit `run_in_background=true` (kein Deny — In-Turn-Hintergrund-Shells bleiben legitim) und Stop-Hook-Guard trackt jetzt auch `shell_backgrounded`/`shell_killed` im selben Set.
 
 **Berührt Dateien:** `packages/shared/src/agent/core/pre-tool-use.ts` (Bash-Leg im defaultAsyncReminder), `core/stop-hook-guard.ts` (+Shell-Events, Reason-Text), Tests in `__tests__/{stop-hook-guard.test.ts,pre-tool-use-checks.isolated.ts}`.
+
+**p11b — Monitor (2026-08-09):** Auch das Monitor-Tool (SDK 0.3.220) überlebt kein Turn-Ende — Watch stirbt mit dem Subprozess, ohne Event (kein `shell_backgrounded`-Analogon, daher nur Step-0-Reminder, kein Stop-Hook-Tracking). Reminder verweist auf den p11-`background_result`-Kanal als korrektes Muster.
 
 ---
 
